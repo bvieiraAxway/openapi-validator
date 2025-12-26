@@ -21,51 +21,69 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContextBuilder;
 
+/**
+ * HTTP Client for communicating with Axway API Manager.
+ *
+ * NOTE: SSL validation is disabled intentionally because
+ * API Gateway environments often use internal/self-signed certificates.
+ */
 public class APIManagerHttpClient {
-	
-	private static String API_VERSION = "/api/portal/v1.3";
-	
-	private URI apiManagerUrl;
-	private String password;
-	private String username;
-	
-	private CloseableHttpClient httpClient = null;
-	
-	private HttpClientContext clientContext;
-	
-	public APIManagerHttpClient(String apiManagerUrl, String username, String password) throws Exception {
-		super();
-		this.apiManagerUrl = new URI(apiManagerUrl);
-		this.password = password;
-		this.username = username;
-		getClient();
-	}
 
-	public void getClient() throws Exception {
-		CredentialsProvider credsProvider = new BasicCredentialsProvider();
-		credsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(username, password));
-		AuthCache authCache = new BasicAuthCache();
-		BasicScheme basicAuth = new BasicScheme();
-		authCache.put( new HttpHost(apiManagerUrl.getHost(), apiManagerUrl.getPort(), apiManagerUrl.getScheme()), basicAuth );
-		clientContext = HttpClientContext.create();
-		clientContext.setAuthCache(authCache);
-		
-		SSLContextBuilder builder = SSLContextBuilder.create();
-		builder.loadTrustMaterial(null, new TrustAllStrategy());
-		SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(builder.build(), new NoopHostnameVerifier());
-		
-		CloseableHttpClient httpClient = HttpClients.custom()
-				.setDefaultCredentialsProvider(credsProvider)
-				.setSSLSocketFactory(sslsf)
-				.build();
-		this.httpClient = httpClient;
-	}
-	
-	public CloseableHttpResponse get(String request) throws Exception {
-		URIBuilder uri = new URIBuilder(apiManagerUrl + API_VERSION + request);
-		HttpGet httpGet = new HttpGet(uri.toString());
-		CloseableHttpResponse response = httpClient.execute(httpGet, clientContext);
-		return response;
-	}
-	
+    private static final String DEFAULT_API_VERSION = "/api/portal/v1.4";
+
+    private final URI apiManagerUrl;
+    private final String username;
+    private final String password;
+
+    private CloseableHttpClient httpClient;
+    private HttpClientContext clientContext;
+
+    public APIManagerHttpClient(String apiManagerUrl, String username, String password) throws Exception {
+        this.apiManagerUrl = new URI(apiManagerUrl);
+        this.username = username;
+        this.password = password;
+        initClient();
+    }
+
+    private void initClient() throws Exception {
+        CredentialsProvider credsProvider = new BasicCredentialsProvider();
+        credsProvider.setCredentials(
+                AuthScope.ANY,
+                new UsernamePasswordCredentials(username, password)
+        );
+
+        AuthCache authCache = new BasicAuthCache();
+        BasicScheme basicAuth = new BasicScheme();
+        authCache.put(
+                new HttpHost(
+                        apiManagerUrl.getHost(),
+                        apiManagerUrl.getPort(),
+                        apiManagerUrl.getScheme()
+                ),
+                basicAuth
+        );
+
+        clientContext = HttpClientContext.create();
+        clientContext.setAuthCache(authCache);
+
+        SSLContextBuilder sslContextBuilder = SSLContextBuilder.create()
+                .loadTrustMaterial(null, new TrustAllStrategy());
+
+        SSLConnectionSocketFactory sslSocketFactory =
+                new SSLConnectionSocketFactory(
+                        sslContextBuilder.build(),
+                        NoopHostnameVerifier.INSTANCE
+                );
+
+        this.httpClient = HttpClients.custom()
+                .setDefaultCredentialsProvider(credsProvider)
+                .setSSLSocketFactory(sslSocketFactory)
+                .build();
+    }
+
+    public CloseableHttpResponse get(String requestPath) throws Exception {
+        URI uri = new URIBuilder(apiManagerUrl + DEFAULT_API_VERSION + requestPath).build();
+        HttpGet httpGet = new HttpGet(uri);
+        return httpClient.execute(httpGet, clientContext);
+    }
 }
